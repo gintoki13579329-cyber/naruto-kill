@@ -1,5 +1,5 @@
 
-import { CardDef, CardType, Character } from './types';
+import { CardDef, CardType, Character, PlayingCard } from './types';
 
 export const EMOTES = [
   { id: 1, text: "👊 决一死战!", icon: "😠" },
@@ -46,8 +46,8 @@ export const CARD_LIBRARY: CardDef[] = [
   { id: 'gamabunta', name: '蛤蟆文太', description: '防御马 +1。', type: CardType.EQUIP_DEF_HORSE, icon: 'fa-frog', color: 'text-red-700' }
 ];
 
-export const generateDeck = (): any[] => {
-  let deck: any[] = [];
+export const generateDeck = (): PlayingCard[] => {
+  let deck: PlayingCard[] = [];
   const counts: Record<string, number> = {
     'atk': 24, 'dodge': 24, 'heal': 16, 'draw': 12, 
     'fireball': 6, 'chidori': 3, 'duel': 4, 'steal': 6, 'dismantle': 6,

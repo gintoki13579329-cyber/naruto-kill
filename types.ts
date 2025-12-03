@@ -69,7 +69,7 @@ export interface Player {
   isTurn: boolean;
   isDying: boolean;
   skippedTurn?: boolean;
-  hasPlayedAttack: number; // Changed from boolean to number for 2 attacks/turn
+  hasPlayedAttack: number; // 0, 1, 2...
   flags: { [key: string]: boolean | number };
 }
 
@@ -100,4 +100,10 @@ export interface PendingAction {
   message: string;
   judgementStep?: 'DRAW';
   actionAfter?: 'DAMAGE' | 'RESOLVE' | 'JUDGEMENT' | 'START_DUEL' | 'DUEL_ROUND';
+}
+
+export interface ChatMessage {
+  id: string;
+  playerId: string;
+  text: string;
 }

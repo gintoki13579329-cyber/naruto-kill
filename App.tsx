@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { CHARACTERS, generateDeck, CARD_LIBRARY, EMOTES } from './constants';
-import { CardType, GameState, Player, PlayingCard, PendingAction, Character, LogEntry, Skill } from './types';
+import { CardType, GameState, Player, PlayingCard, PendingAction, Character, LogEntry, Skill, ChatMessage } from './types';
 
 // ================= APP LOGIC =================
 const DELAY_AI_ACTION = 1000;
@@ -88,7 +88,7 @@ const VisualEffect = ({ type }: { type: string }) => {
             content = <i className="fa-solid fa-heart text-green-500 text-5xl animate-heal"></i>;
             break;
         case 'BLOOD':
-            content = <i className="fa-solid fa-burst text-red-600 text-6xl animate-hit opacity-80"></i>;
+            content = <i className="fa-solid fa-burst text-red-600 text-6xl animate-blood opacity-80"></i>;
             break;
         default: return null;
     }
@@ -238,6 +238,8 @@ export default function App() {
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showEmoteMenu, setShowEmoteMenu] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showLog, setShowLog] = useState(false); // Toggle log view
+
   const [animatingCards, setAnimatingCards] = useState<{id: string, card: PlayingCard, type: string}[]>([]);
   const [visualEffects, setVisualEffects] = useState<{id: string, targetId: string, type: string}[]>([]);
   const [chatMessages, setChatMessages] = useState<{id: string, playerId: string, text: string}[]>([]);
@@ -732,7 +734,6 @@ export default function App() {
               }
           }));
       }
-      // ... other card types (DUEL, AOE, etc) logic same as index.html version ...
       else if (card.type === CardType.DUEL) {
           setGameState(prev => ({ ...prev!, pendingAction: { type: 'RESPONSE_CARD', sourceId: source.id, targetId: targetId!, cardNeeded: CardType.NEGATE, cardUsed: card, message: `${source.character.name} 对你使用决斗，是否使用反螺旋丸？`, actionAfter: 'START_DUEL' } }));
       } else if (card.type === CardType.AOE) {
@@ -820,7 +821,18 @@ export default function App() {
           
           // Simplied Ult Effects mapping
           if (src.character.id === 'naruto' && tgt) { triggerVisual(tgt.id, 'RASENGAN'); applyDamageState(tgt, 2, source.id, updatedPlayers); }
-          // ... others
+          else if (src.character.id === 'sasuke') { triggerVisual('ALL', 'LIGHTNING'); oppIds.forEach(id => applyDamageState(updatedPlayers.find(p => p.id === id)!, 1, source.id, updatedPlayers)); }
+          else if (src.character.id === 'kakashi' && tgt) { triggerVisual(tgt.id, 'LIGHTNING'); applyDamageState(tgt, 1, source.id, updatedPlayers); if (tgt.hp > 0) { ['weapon','armor','offHorse','defHorse'].forEach(s => tgt.equips[s as keyof typeof tgt.equips] = undefined); } }
+          else if (src.character.id === 'sakura') { triggerVisual(src.id, 'HEAL'); src.hp = src.maxHp; }
+          else if (src.character.id === 'gaara' && tgt) { tgt.skippedTurn = true; applyDamageState(tgt, 1, source.id, updatedPlayers); }
+          else if (src.character.id === 'itachi' && tgt) { triggerVisual(tgt.id, 'FIRE'); applyDamageState(tgt, 2, source.id, updatedPlayers); }
+          else if (src.character.id === 'tsunade') { triggerVisual(src.id, 'HEAL'); src.hp = Math.min(src.maxHp, src.hp + 2); src.hand.push(...prev!.deck.slice(0, 2)); return { ...prev!, deck: prev!.deck.slice(2), players: updatedPlayers }; }
+          else if (src.character.id === 'jiraiya') { triggerVisual('ALL', 'FIRE'); oppIds.forEach(id => applyDamageState(updatedPlayers.find(p => p.id === id)!, 1, source.id, updatedPlayers)); }
+          else if (src.character.id === 'orochimaru') { triggerVisual(src.id, 'HEAL'); src.hp = Math.min(src.maxHp, src.hp + 1); const need = Math.max(0, 5 - src.hand.length); if (need > 0) { src.hand.push(...prev!.deck.slice(0, need)); return { ...prev!, deck: prev!.deck.slice(need), players: updatedPlayers }; } }
+          else if (src.character.id === 'pain') oppIds.forEach(id => { const t = updatedPlayers.find(p => p.id === id)!; if (t.hand.length > 0) t.hand.splice(0, Math.min(2, t.hand.length)); });
+          else if (src.character.id === 'madara') { triggerVisual('ALL', 'BLOOD'); updatedPlayers.forEach(p => { if (p.hp > 0) applyDamageState(p, 1, source.id, updatedPlayers); }); src.hand.push(...prev!.deck.slice(0, 3)); return { ...prev!, deck: prev!.deck.slice(3), players: updatedPlayers }; }
+          else if (src.character.id === 'minato' && tgt) { triggerVisual(tgt.id, 'RASENGAN'); applyDamageState(tgt, 2, source.id, updatedPlayers); }
+          
           return { ...prev!, players: updatedPlayers };
       });
   };
@@ -873,6 +885,15 @@ export default function App() {
       else handleCardPlay(gameState.players[0], null, card);
   };
 
+  // --- INSPECT LOGIC ---
+  const toggleInspect = (player: Player) => {
+      if (inspectedPlayer && inspectedPlayer.id === player.id) {
+          setInspectedPlayer(null);
+      } else {
+          setInspectedPlayer(player);
+      }
+  };
+
   // ... UI Rendering ...
   // (Same structure as HTML version: EquipmentSection, VisualEffect, CardComponent, PlayerAvatar, Main Layout)
   
@@ -920,19 +941,36 @@ export default function App() {
           {animatingCards.map(anim => <div key={anim.id} className="absolute inset-0 flex items-center justify-center z-[100] pointer-events-none"><CardComponent card={anim.card} size="normal" /></div>)}
           
           {/* Top: AI Grid */}
-          <div className="flex-none p-2 grid grid-cols-2 gap-2 z-10 pt-safe">
+          <div className="flex-none p-2 grid grid-cols-2 gap-2 z-10 pt-12">
               {ais.map((ai, idx) => (
-                  <PlayerAvatar key={ai.id} player={ai} isCurrentTurn={gameState.turnIndex === idx+1} isUser={false} position="top-grid" onClick={() => setInspectedPlayer(ai)} activeEffect={visualEffects.find(v => v.targetId === ai.id || v.targetId === 'ALL')?.type} activeChat={chatMessages.find(c => c.playerId === ai.id)?.text} />
+                  <PlayerAvatar key={ai.id} player={ai} isCurrentTurn={gameState.turnIndex === idx+1} isUser={false} position="top-grid" onClick={() => toggleInspect(ai)} activeEffect={visualEffects.find(v => v.targetId === ai.id || v.targetId === 'ALL')?.type} activeChat={chatMessages.find(c => c.playerId === ai.id)?.text} />
               ))}
           </div>
 
-          {/* Status & Logs Floating */}
-          <div className="absolute top-safe left-2 bg-black/40 px-2 py-1 rounded text-xs text-gray-300 z-20">牌堆:{gameState.deck.length} 弃:{gameState.discardPile.length}</div>
-          
-          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[80%] pointer-events-none z-20">
-              <div className="bg-black/60 backdrop-blur-sm rounded-lg p-2 max-h-24 overflow-y-auto no-scrollbar space-y-1">
-                  {gameState.logs.map(l => <div key={l.id} className={`text-[10px] ${l.type === 'damage' ? 'text-red-400' : 'text-gray-300'}`}>{l.text}</div>)}
+          {/* Top: Expandable Logs Bar (FIXED POSITION) */}
+          <div className={`absolute top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md transition-all duration-300 ${showLog ? 'h-auto max-h-40' : 'h-8'} overflow-hidden border-b border-white/10`}>
+              <div className="flex justify-between items-center px-4 h-8 cursor-pointer" onClick={() => setShowLog(!showLog)}>
+                  <span className="text-xs text-gray-300 flex items-center gap-2 truncate">
+                      <i className="fa-solid fa-scroll text-orange-500"></i> 
+                      {gameState.logs[gameState.logs.length-1]?.text || "等待行动..."}
+                  </span>
+                  <i className={`fa-solid fa-chevron-down text-xs text-gray-500 transition-transform ${showLog ? 'rotate-180' : ''}`}></i>
               </div>
+              {showLog && (
+                  <div className="p-2 space-y-1 overflow-y-auto max-h-32 no-scrollbar bg-black/20">
+                      {gameState.logs.slice().reverse().map((log) => (
+                          <div key={log.id} className={`text-[10px] border-l-2 pl-2 ${log.type === 'damage' ? 'border-red-500 text-red-300' : (log.type === 'important' ? 'border-yellow-500 text-yellow-200' : 'border-gray-600 text-gray-400')}`}>
+                              {log.text}
+                          </div>
+                      ))}
+                  </div>
+              )}
+          </div>
+
+          {/* Top Left: Deck Info (Under Log Bar) */}
+          <div className="absolute top-10 left-2 flex gap-2 text-[10px] text-gray-500 z-0 pointer-events-none">
+             <div className="bg-black/40 px-2 py-0.5 rounded">牌堆: {gameState.deck.length}</div>
+             <div className="bg-black/40 px-2 py-0.5 rounded">弃牌: {gameState.discardPile.length}</div>
           </div>
 
           {/* Modals & Overlays */}
@@ -943,7 +981,7 @@ export default function App() {
               
               <div className="flex justify-between items-end px-4 mb-2">
                   <div className="relative">
-                      <PlayerAvatar player={user} isCurrentTurn={gameState.turnIndex === 0} isUser={true} position="bottom" onClick={() => setInspectedPlayer(user)} activeEffect={visualEffects.find(v => v.targetId === user.id || v.targetId === 'ALL')?.type} activeChat={chatMessages.find(c => c.playerId === user.id)?.text} />
+                      <PlayerAvatar player={user} isCurrentTurn={gameState.turnIndex === 0} isUser={true} position="bottom" onClick={() => toggleInspect(user)} activeEffect={visualEffects.find(v => v.targetId === user.id || v.targetId === 'ALL')?.type} activeChat={chatMessages.find(c => c.playerId === user.id)?.text} />
                       {/* Emote Trigger */}
                       <button onClick={() => setShowEmoteMenu(!showEmoteMenu)} className="absolute -top-2 -right-2 bg-white text-black rounded-full w-6 h-6 flex items-center justify-center shadow-md text-xs border border-gray-300">💬</button>
                       {/* Emote Menu */}
